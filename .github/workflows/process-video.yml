@@ -1,6 +1,13 @@
 name: Process YouTube Video
 
 on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "URL YouTube"
+        required: true
+        type: string
+
   repository_dispatch:
     types: [process_video]
 
@@ -15,15 +22,24 @@ jobs:
           sudo apt-get install -y ffmpeg
           python3 -m pip install -U yt-dlp
 
-      - name: Download YouTube video
+      - name: Get YouTube URL
+        id: video
+        run: |
+          if [ -n "${{ inputs.video_url }}" ]; then
+            echo "url=${{ inputs.video_url }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=${{ github.event.client_payload.video_url }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download video
         run: |
           yt-dlp \
             --format "best[ext=mp4]/best" \
             --merge-output-format mp4 \
             --output "video.mp4" \
-            "${{ github.event.client_payload.video_url }}"
+            "${{ steps.video.outputs.url }}"
 
-      - name: Get video duration
+      - name: Get duration
         id: duration
         run: |
           DURATION=$(ffprobe -v error \
@@ -35,11 +51,11 @@ jobs:
 
       - name: Create 4 square images
         run: |
-          DURATION=${{ steps.duration.outputs.duration }}
+          DURATION="${{ steps.duration.outputs.duration }}"
 
-          FRAME1=$(python3 -c "print(max(0, float('$DURATION') * 0.25))")
-          FRAME2=$(python3 -c "print(max(0, float('$DURATION') * 0.50))")
-          FRAME3=$(python3 -c "print(max(0, float('$DURATION') * 0.75))")
+          FRAME1=$(python3 -c "print(float('$DURATION') * 0.25)")
+          FRAME2=$(python3 -c "print(float('$DURATION') * 0.50)")
+          FRAME3=$(python3 -c "print(float('$DURATION') * 0.75)")
 
           ffmpeg -y -ss 0 -i video.mp4 \
             -frames:v 1 \
@@ -61,6 +77,12 @@ jobs:
             -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
             frame3.jpg
 
-      - name: Check results
-        run: |
-          ls -lh thumbnail.jpg frame1.jpg frame2.jpg frame3.jpg
+      - name: Upload images as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-images
+          path: |
+            thumbnail.jpg
+            frame1.jpg
+            frame2.jpg
+            frame3.jpg
