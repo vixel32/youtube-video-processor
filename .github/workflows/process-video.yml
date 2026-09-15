@@ -1,0 +1,28 @@
+name: Process YouTube Video
+
+on:
+  repository_dispatch:
+    types: [process_video]
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install yt-dlp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python3 -m pip install -U yt-dlp
+
+      - name: Download video
+        run: |
+          yt-dlp \
+            --format "best[ext=mp4]/best" \
+            --output "video.%(ext)s" \
+            "${{ github.event.client_payload.video_url }}"
+
+      - name: Check downloaded video
+        run: |
+          ls -lh
+          ffprobe video.mp4
