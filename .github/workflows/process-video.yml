@@ -9,20 +9,58 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install yt-dlp
+      - name: Install FFmpeg and yt-dlp
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
           python3 -m pip install -U yt-dlp
 
-      - name: Download video
+      - name: Download YouTube video
         run: |
           yt-dlp \
             --format "best[ext=mp4]/best" \
-            --output "video.%(ext)s" \
+            --merge-output-format mp4 \
+            --output "video.mp4" \
             "${{ github.event.client_payload.video_url }}"
 
-      - name: Check downloaded video
+      - name: Get video duration
+        id: duration
         run: |
-          ls -lh
-          ffprobe video.mp4
+          DURATION=$(ffprobe -v error \
+            -show_entries format=duration \
+            -of default=noprint_wrappers=1:nokey=1 \
+            video.mp4)
+
+          echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+
+      - name: Create 4 square images
+        run: |
+          DURATION=${{ steps.duration.outputs.duration }}
+
+          FRAME1=$(python3 -c "print(max(0, float('$DURATION') * 0.25))")
+          FRAME2=$(python3 -c "print(max(0, float('$DURATION') * 0.50))")
+          FRAME3=$(python3 -c "print(max(0, float('$DURATION') * 0.75))")
+
+          ffmpeg -y -ss 0 -i video.mp4 \
+            -frames:v 1 \
+            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
+            thumbnail.jpg
+
+          ffmpeg -y -ss "$FRAME1" -i video.mp4 \
+            -frames:v 1 \
+            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
+            frame1.jpg
+
+          ffmpeg -y -ss "$FRAME2" -i video.mp4 \
+            -frames:v 1 \
+            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
+            frame2.jpg
+
+          ffmpeg -y -ss "$FRAME3" -i video.mp4 \
+            -frames:v 1 \
+            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
+            frame3.jpg
+
+      - name: Check results
+        run: |
+          ls -lh thumbnail.jpg frame1.jpg frame2.jpg frame3.jpg
