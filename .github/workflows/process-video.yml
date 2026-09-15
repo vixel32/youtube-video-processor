@@ -16,11 +16,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install FFmpeg and yt-dlp
+      - name: Install FFmpeg
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg
-          python3 -m pip install -U yt-dlp
+
+      - name: Install yt-dlp
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -L \
+            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+            -o "$HOME/.local/bin/yt-dlp"
+          chmod a+rx "$HOME/.local/bin/yt-dlp"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Check tools
+        run: |
+          yt-dlp --version
+          ffmpeg -version | head -1
 
       - name: Get YouTube URL
         id: video
@@ -31,7 +44,7 @@ jobs:
             echo "url=${{ github.event.client_payload.video_url }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download video
+      - name: Download YouTube video
         run: |
           yt-dlp \
             --format "best[ext=mp4]/best" \
@@ -39,7 +52,7 @@ jobs:
             --output "video.mp4" \
             "${{ steps.video.outputs.url }}"
 
-      - name: Get duration
+      - name: Get video duration
         id: duration
         run: |
           DURATION=$(ffprobe -v error \
@@ -48,8 +61,9 @@ jobs:
             video.mp4)
 
           echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+          echo "Duration: $DURATION seconds"
 
-      - name: Create 4 square images
+      - name: Create thumbnail and 3 frames
         run: |
           DURATION="${{ steps.duration.outputs.duration }}"
 
@@ -77,7 +91,14 @@ jobs:
             -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
             frame3.jpg
 
-      - name: Upload images as artifact
+      - name: Check images
+        run: |
+          ls -lh thumbnail.jpg
+          ls -lh frame1.jpg
+          ls -lh frame2.jpg
+          ls -lh frame3.jpg
+
+      - name: Save images
         uses: actions/upload-artifact@v4
         with:
           name: product-images
