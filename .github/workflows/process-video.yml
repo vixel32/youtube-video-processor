@@ -9,7 +9,8 @@ on:
         type: string
 
   repository_dispatch:
-    types: [process_video]
+    types:
+      - process_video
 
 jobs:
   process:
@@ -53,7 +54,7 @@ jobs:
             echo "url=${{ github.event.client_payload.video_url }}" >> "$GITHUB_OUTPUT"
           fi
 
-            - name: Download YouTube video
+      - name: Download YouTube video
         run: |
           yt-dlp \
             --js-runtimes deno \
