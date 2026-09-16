@@ -21,18 +21,27 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
+      - name: Install Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install yt-dlp
         run: |
           mkdir -p "$HOME/.local/bin"
+
           curl -L \
             https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
             -o "$HOME/.local/bin/yt-dlp"
+
           chmod a+rx "$HOME/.local/bin/yt-dlp"
+
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Check tools
         run: |
           yt-dlp --version
+          deno --version
           ffmpeg -version | head -1
 
       - name: Get YouTube URL
@@ -47,6 +56,8 @@ jobs:
       - name: Download YouTube video
         run: |
           yt-dlp \
+            --js-runtimes deno \
+            --remote-components ejs:github \
             --format "best[ext=mp4]/best" \
             --merge-output-format mp4 \
             --output "video.mp4" \
@@ -61,9 +72,8 @@ jobs:
             video.mp4)
 
           echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
-          echo "Duration: $DURATION seconds"
 
-      - name: Create thumbnail and 3 frames
+      - name: Create 4 square images
         run: |
           DURATION="${{ steps.duration.outputs.duration }}"
 
@@ -90,13 +100,6 @@ jobs:
             -frames:v 1 \
             -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
             frame3.jpg
-
-      - name: Check images
-        run: |
-          ls -lh thumbnail.jpg
-          ls -lh frame1.jpg
-          ls -lh frame2.jpg
-          ls -lh frame3.jpg
 
       - name: Save images
         uses: actions/upload-artifact@v4
