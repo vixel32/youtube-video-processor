@@ -22,29 +22,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Install Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
-      - name: Install yt-dlp
-        run: |
-          mkdir -p "$HOME/.local/bin"
-
-          curl -L \
-            https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
-            -o "$HOME/.local/bin/yt-dlp"
-
-          chmod a+rx "$HOME/.local/bin/yt-dlp"
-
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Check tools
-        run: |
-          yt-dlp --version
-          deno --version
-          ffmpeg -version | head -1
-
       - name: Get YouTube URL
         id: video
         run: |
@@ -54,61 +31,69 @@ jobs:
             echo "url=${{ github.event.client_payload.video_url }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download YouTube video
+      - name: Get YouTube Video ID
+        id: video_id
         run: |
-          yt-dlp \
-            --js-runtimes deno \
-            --remote-components ejs:github \
-            --extractor-args "youtube:player_client=tv" \
-            --format "best[ext=mp4]/best" \
-            --merge-output-format mp4 \
-            --output "video.mp4" \
-            "${{ steps.video.outputs.url }}"
+          URL="${{ steps.video.outputs.url }}"
 
-      - name: Get video duration
-        id: duration
+          VIDEO_ID=$(python3 -c "
+          from urllib.parse import urlparse, parse_qs
+          import sys
+
+          url = sys.argv[1]
+          p = urlparse(url)
+
+          if 'youtu.be' in p.netloc:
+              video_id = p.path.strip('/')
+          elif 'youtube.com' in p.netloc:
+              video_id = parse_qs(p.query).get('v', [''])[0]
+          else:
+              video_id = ''
+
+          print(video_id)
+          " "$URL")
+
+          if [ -z "$VIDEO_ID" ]; then
+            echo "Gagal menemukan YouTube Video ID"
+            exit 1
+          fi
+
+          echo "Video ID: $VIDEO_ID"
+          echo "id=$VIDEO_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download YouTube thumbnail
         run: |
-          DURATION=$(ffprobe -v error \
-            -show_entries format=duration \
-            -of default=noprint_wrappers=1:nokey=1 \
-            video.mp4)
+          VIDEO_ID="${{ steps.video_id.outputs.id }}"
 
-          echo "duration=$DURATION" >> "$GITHUB_OUTPUT"
+          curl -L --fail \
+            "https://i.ytimg.com/vi/${VIDEO_ID}/maxresdefault.jpg" \
+            -o thumbnail-original.jpg
 
-      - name: Create 4 square images
+          if [ ! -s thumbnail-original.jpg ]; then
+            echo "Max resolution thumbnail tidak tersedia."
+            exit 1
+          fi
+
+      - name: Create square thumbnail
         run: |
-          DURATION="${{ steps.duration.outputs.duration }}"
-
-          FRAME1=$(python3 -c "print(float('$DURATION') * 0.25)")
-          FRAME2=$(python3 -c "print(float('$DURATION') * 0.50)")
-          FRAME3=$(python3 -c "print(float('$DURATION') * 0.75)")
-
-          ffmpeg -y -ss 0 -i video.mp4 \
-            -frames:v 1 \
+          ffmpeg -y \
+            -i thumbnail-original.jpg \
             -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
+            -frames:v 1 \
             thumbnail.jpg
 
-          ffmpeg -y -ss "$FRAME1" -i video.mp4 \
-            -frames:v 1 \
-            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
-            frame1.jpg
+      - name: Check result
+        run: |
+          ls -lh thumbnail.jpg
 
-          ffmpeg -y -ss "$FRAME2" -i video.mp4 \
-            -frames:v 1 \
-            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
-            frame2.jpg
+          ffprobe \
+            -v error \
+            -show_entries stream=width,height \
+            -of default=noprint_wrappers=1 \
+            thumbnail.jpg
 
-          ffmpeg -y -ss "$FRAME3" -i video.mp4 \
-            -frames:v 1 \
-            -vf "scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080" \
-            frame3.jpg
-
-      - name: Save images
+      - name: Save thumbnail
         uses: actions/upload-artifact@v4
         with:
-          name: product-images
-          path: |
-            thumbnail.jpg
-            frame1.jpg
-            frame2.jpg
-            frame3.jpg
+          name: product-thumbnail
+          path: thumbnail.jpg
